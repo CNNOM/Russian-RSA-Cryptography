@@ -9,25 +9,34 @@ services:
       - "8082:8082"
     networks:
       - demo-network
+    environment:
+      - NODE_ENV=production
 
-  # Отправитель (фронтенд)
-
+  # Отправитель
   sender:
-    build: ./sender  # Папка с Dockerfile и index.php для отправителя
+    build: ./sender
     container_name: demo-sender
     ports:
       - "8080:80"
     networks:
       - demo-network
+    depends_on:
+      - websocket
+    environment:
+      - WS_SERVER=websocket
 
+  # Получатель
   receiver:
-    build: ./receiver  # Папка с Dockerfile и index.php для получателя
+    build: ./receiver
     container_name: demo-receiver
     ports:
       - "8081:80"
     networks:
       - demo-network
-
+    depends_on:
+      - websocket
+    environment:
+      - WS_SERVER=websocket
 
 networks:
   demo-network:

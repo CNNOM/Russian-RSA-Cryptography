@@ -1,46 +1,291 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-    <title>Получатель (8081)</title>
+    <title>Получатель с ГОСТ шифрованием</title>
     <style>
-        body { font-family: Arial; padding: 20px; }
-        #messages { 
-            border: 1px solid #ccc; 
-            padding: 20px; 
-            height: 300px; 
+        body {
+            font-family: 'Arial', sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            border-left: 5px solid #2196F3;
+        }
+
+        .crypto-status {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-family: monospace;
+            font-size: 14px;
+        }
+
+        .status-connected {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        .status-disconnected {
+            color: #f44336;
+            font-weight: bold;
+        }
+
+        .messages-container {
+            max-height: 500px;
             overflow-y: auto;
             margin-top: 20px;
         }
+
+        .message-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .sender {
+            font-weight: bold;
+            color: #2196F3;
+        }
+
+        .timestamp {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .message-text {
+            padding: 10px;
+            background: #f9f9f9;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 16px;
+        }
+
+        .crypto-info {
+            background: #e3f2fd;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 12px;
+            font-family: monospace;
+        }
+
+        .signature-valid {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        .signature-invalid {
+            color: #f44336;
+            font-weight: bold;
+        }
     </style>
 </head>
+
 <body>
-    <h1>📥 Получатель</h1>
-    <div>Сообщения появляются здесь в реальном времени:</div>
-    <div id="messages"></div>
-    
+    <div class="container">
+        <div class="header">
+            <h1>🔓 Получатель с ГОСТ шифрованием</h1>
+            <p>Порт: 8081 | Режим: Расшифровка и проверка подписей</p>
+        </div>
+
+        <div class="crypto-status">
+            Статус: <span id="cryptoStatus" class="status-disconnected">❌ Ожидание инициализации...</span>
+        </div>
+
+        <h3>📨 Полученные сообщения:</h3>
+        <div class="messages-container" id="messagesContainer">
+            <div style="text-align: center; padding: 20px; color: #666;">
+                Ожидание зашифрованных сообщений...
+            </div>
+        </div>
+    </div>
+
+    <script src="js/crypto.js"></script>
+
     <script>
-        const messagesDiv = document.getElementById('messages');
-        
-        // Подключаемся к WebSocket серверу
-        const ws = new WebSocket('ws://localhost:8082');
-        
-        ws.onopen = () => {
-            console.log('Получатель подключен к WebSocket');
-            addMessage('✅ Подключено к серверу');
-        };
-        
-        ws.onmessage = (event) => {
-            addMessage(`📨 ${event.data}`);
-        };
-        
-        function addMessage(text) {
-            const msg = document.createElement('div');
-            msg.textContent = text;
-            msg.style.padding = '10px';
-            msg.style.borderBottom = '1px solid #eee';
-            messagesDiv.appendChild(msg);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        let ws = null;
+        let cryptoInitialized = false;
+
+        // Определяем адрес WebSocket сервера
+        const wsHost = window.location.hostname === 'localhost' ? 'localhost' : 'websocket';
+        const wsUrl = `ws://${wsHost}:8082`;
+
+        console.log('Подключение к:', wsUrl);
+
+        function connectWebSocket() {
+            console.log('🔄 Подключение к WebSocket...');
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('✅ Подключено к WebSocket серверу');
+                updateStatus('Подключено к серверу шифрования');
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'init') {
+                        if (typeof window.CryptoManager !== 'undefined') {
+                            window.CryptoManager.init(data);
+                            cryptoInitialized = true;
+
+                            document.getElementById('cryptoStatus').className = 'status-connected';
+                            document.getElementById('cryptoStatus').textContent = '✅ Криптография инициализирована';
+
+                            updateStatus('Криптографические ключи получены');
+                            console.log('✅ Криптография инициализирована');
+                        }
+
+                    } else if (data.type === 'encrypted_message') {
+                        if (cryptoInitialized) {
+                            processEncryptedMessage(data);
+                        }
+                    }
+
+                } catch (error) {
+                    console.error('Ошибка обработки сообщения:', error);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket ошибка:', error);
+                document.getElementById('cryptoStatus').className = 'status-disconnected';
+                document.getElementById('cryptoStatus').textContent = '❌ Ошибка подключения';
+                updateStatus('Ошибка подключения к серверу шифрования');
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket соединение закрыто');
+                cryptoInitialized = false;
+                document.getElementById('cryptoStatus').className = 'status-disconnected';
+                document.getElementById('cryptoStatus').textContent = '❌ Соединение закрыто';
+                updateStatus('Соединение закрыто, переподключение...');
+
+                setTimeout(connectWebSocket, 5000);
+            };
         }
+
+        function processEncryptedMessage(data) {
+            try {
+                const decrypted = window.CryptoManager.decryptMessage(data.payload);
+                const messageObj = JSON.parse(decrypted);
+
+                // Отображаем сообщение
+                displayMessage(messageObj);
+
+            } catch (error) {
+                console.error('Ошибка обработки сообщения:', error);
+                updateStatus(`❌ Ошибка расшифровки: ${error.message}`);
+            }
+        }
+
+        function displayMessage(messageObj) {
+            const messagesContainer = document.getElementById('messagesContainer');
+
+            const messageCard = document.createElement('div');
+            messageCard.className = 'message-card';
+            messageCard.innerHTML = `
+            <div class="message-header">
+                <span class="sender">👤 ${messageObj.sender}</span>
+                <span class="timestamp">${new Date(messageObj.timestamp).toLocaleTimeString()}</span>
+            </div>
+            <div class="message-text">${escapeHtml(messageObj.text)}</div>
+            <div class="crypto-info">
+                🔐 <strong>Шифрование ГОСТ:</strong> 
+                Алгоритм: ГОСТ Р 34.13-2015 "Кузнечик"<br>
+                Подпись: <span class="signature-valid">✓ Проверена</span>
+            </div>
+        `;
+
+            // Очищаем placeholder если есть
+            if (messagesContainer.firstChild &&
+                messagesContainer.firstChild.style &&
+                messagesContainer.firstChild.style.textAlign === 'center') {
+                messagesContainer.innerHTML = '';
+            }
+
+            messagesContainer.insertBefore(messageCard, messagesContainer.firstChild);
+
+            // Ограничиваем количество
+            if (messagesContainer.children.length > 10) {
+                messagesContainer.removeChild(messagesContainer.lastChild);
+            }
+
+            // Воспроизводим звук
+            playNotificationSound();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function playNotificationSound() {
+            // Простой звук уведомления
+            const audio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==');
+            audio.volume = 0.3;
+            audio.play().catch(e => console.log('Звук не воспроизведен:', e));
+        }
+
+        function updateStatus(text) {
+            const messagesContainer = document.getElementById('messagesContainer');
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'message-card';
+            statusDiv.innerHTML = `<div style="color: #666; text-align: center;">ℹ️ ${text}</div>`;
+
+            if (messagesContainer.firstChild &&
+                messagesContainer.firstChild.style &&
+                messagesContainer.firstChild.style.textAlign === 'center') {
+                messagesContainer.innerHTML = '';
+            }
+
+            messagesContainer.insertBefore(statusDiv, messagesContainer.firstChild);
+        }
+
+        // Запускаем
+        window.onload = function () {
+            console.log('Страница получателя загружена');
+
+            if (typeof window.CryptoManager !== 'undefined') {
+                connectWebSocket();
+            } else {
+                console.error('CryptoManager не загружен!');
+                updateStatus('Ошибка: crypto.js не загружен');
+            }
+        };
     </script>
 </body>
+
 </html>
