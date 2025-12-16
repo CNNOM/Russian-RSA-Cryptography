@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  # Сервер WebSocket
+  websocket:
+    build: ./websocket-server
+    container_name: websocket-server
+    ports:
+      - "8082:8082"
+    networks:
+      - demo-network
+
+  # Отправитель (фронтенд)
+
+  sender:
+    build: ./sender  # Папка с Dockerfile и index.php для отправителя
+    container_name: demo-sender
+    ports:
+      - "8080:80"
+    networks:
+      - demo-network
+
+  receiver:
+    build: ./receiver  # Папка с Dockerfile и index.php для получателя
+    container_name: demo-receiver
+    ports:
+      - "8081:80"
+    networks:
+      - demo-network
+
+
+networks:
+  demo-network:
+    driver: bridge
