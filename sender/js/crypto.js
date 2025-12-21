@@ -25,7 +25,7 @@ class ClientCrypto {
     // Шифрование сообщения перед отправкой
     encryptMessage(message) {
         if (!this.sessionKey) {
-            throw new Error('Сессионный ключ не установлен');
+            throw new Error('Приватный ключ не установлен');
         }
         
         // Эмуляция шифрования ГОСТ
@@ -48,7 +48,7 @@ class ClientCrypto {
     // Расшифровка входящего сообщения
     decryptMessage(encryptedData) {
         if (!this.sessionKey) {
-            throw new Error('Сессионный ключ не установлен');
+            throw new Error('Приватный ключ не установлен');
         }
         
         const ciphertext = atob(encryptedData.ciphertext);

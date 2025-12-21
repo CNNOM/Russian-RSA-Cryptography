@@ -131,7 +131,7 @@
                 <strong>Публичный ключ:</strong> <span id="publicKey"></span>
             </div>
             <div class="key-display">
-                <strong>Сессионный ключ:</strong> <span id="sessionKey"></span>
+                <strong>Приватный ключ:</strong> <span id="sessionKey"></span>
             </div>
         </div>
 

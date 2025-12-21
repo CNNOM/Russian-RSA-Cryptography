@@ -22,7 +22,7 @@ class ClientCrypto {
     
     encryptMessage(message) {
         if (!this.sessionKey) {
-            throw new Error('Сессионный ключ не установлен');
+            throw new Error('Приватный ключ не установлен');
         }
         
         const iv = this._generateRandomHex(32);
@@ -41,7 +41,7 @@ class ClientCrypto {
     
     decryptMessage(encryptedData) {
         if (!this.sessionKey) {
-            throw new Error('Сессионный ключ не установлен');
+            throw new Error('Приватный ключ не установлен');
         }
         
         const ciphertext = atob(encryptedData.ciphertext);

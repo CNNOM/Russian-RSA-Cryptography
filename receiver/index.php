@@ -228,7 +228,6 @@
             </div>
         `;
 
-            // Очищаем placeholder если есть
             if (messagesContainer.firstChild &&
                 messagesContainer.firstChild.style &&
                 messagesContainer.firstChild.style.textAlign === 'center') {
@@ -242,8 +241,6 @@
                 messagesContainer.removeChild(messagesContainer.lastChild);
             }
 
-            // Воспроизводим звук
-            playNotificationSound();
         }
 
         function escapeHtml(text) {
@@ -252,12 +249,6 @@
             return div.innerHTML;
         }
 
-        function playNotificationSound() {
-            // Простой звук уведомления
-            const audio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==');
-            audio.volume = 0.3;
-            audio.play().catch(e => console.log('Звук не воспроизведен:', e));
-        }
 
         function updateStatus(text) {
             const messagesContainer = document.getElementById('messagesContainer');
