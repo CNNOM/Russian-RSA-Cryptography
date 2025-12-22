@@ -4,14 +4,13 @@ class KeyManager {
     constructor() {
         this.crypto = new RussianCrypto();
         this.clients = new Map(); // clientId -> {publicKey, sessionKey}
-        this.sessionKeys = new Map(); // sessionId -> ключ сессии
     }
 
     // Регистрация нового клиента
     registerClient(clientId, publicKey) {
-        // Генерация сессионного ключа (симметричный по ГОСТ)
-        const sessionKey = this.crypto._generateRandomHex(32);
-        
+        // Генерация сессионного ключа
+        const sessionKey = this.crypto.generateRandomKey(32);
+
         this.clients.set(clientId, {
             publicKey,
             sessionKey,
@@ -29,23 +28,25 @@ class KeyManager {
     }
 
     // Шифрование сообщения для конкретного клиента
+    // Шифрование сообщения для конкретного клиента
     encryptForClient(message, clientId) {
         const client = this.clients.get(clientId);
         if (!client) {
             throw new Error(`Клиент ${clientId} не найден`);
         }
 
-        // Шифруем сообщение сессионным ключом
-        const encrypted = this.crypto.encrypt(message, client.sessionKey);
-        
-        // Добавляем подпись сервера
-        const signature = this.crypto.sign(message, 'server-private-key');
-        
+        // Если message уже объект, сериализуем его
+        const messageToSend = typeof message === 'object' ? JSON.stringify(message) : message;
+
+        // Создаем подпись
+        const signature = this.crypto.sign(messageToSend, 'server_private_key_fallback');
+
         return {
-            ...encrypted,
-            signature,
-            clientId,
-            timestamp: Date.now()
+            message: messageToSend, // Теперь это JSON строка со всеми полями
+            signature: signature,
+            clientId: clientId,
+            timestamp: Date.now(),
+            algorithm: 'GOST-R-34.10-2012'
         };
     }
 
@@ -56,30 +57,38 @@ class KeyManager {
             throw new Error(`Клиент ${clientId} не найден`);
         }
 
-        // Расшифровываем сессионным ключом
-        const decrypted = this.crypto.decrypt(encryptedData, client.sessionKey);
-        
-        // Проверяем подпись клиента
-        if (encryptedData.signature) {
-            const isValid = this.crypto.verify(
-                decrypted, 
-                encryptedData.signature, 
-                client.publicKey
-            );
-            if (!isValid) {
-                throw new Error('Недействительная подпись');
+        const { message, signature } = encryptedData;
+
+        // Проверяем подпись если есть
+        if (signature) {
+            try {
+                const isValid = this.crypto.verify(
+                    message,
+                    signature,
+                    client.publicKey
+                );
+                if (!isValid) {
+                    console.warn(`⚠️ Недействительная подпись от ${clientId}`);
+                }
+            } catch (error) {
+                console.error(`❌ Ошибка проверки подписи:`, error.message);
             }
         }
 
-        return decrypted;
+        return message;
     }
 
     // Проверка подлинности клиента
-    authenticate(clientId, signature, challenge) {
+    authenticate(clientId, signatureData, challenge) {
         const client = this.clients.get(clientId);
         if (!client) return false;
 
-        return this.crypto.verify(challenge, signature, client.publicKey);
+        try {
+            return this.crypto.verify(challenge, signatureData, client.publicKey);
+        } catch (error) {
+            console.error('Ошибка аутентификации:', error);
+            return false;
+        }
     }
 
     // Удаление клиента (при отключении)

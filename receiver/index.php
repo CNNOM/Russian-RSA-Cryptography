@@ -129,7 +129,7 @@
         </div>
     </div>
 
-    <script src="js/crypto.js"></script>
+    <script src="js/receiver.js"></script>
 
     <script>
         let ws = null;
@@ -154,6 +154,7 @@
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
+                    console.log('📨 Получено сообщение от сервера:', data.type);
 
                     if (data.type === 'init') {
                         if (typeof window.CryptoManager !== 'undefined') {
@@ -165,16 +166,49 @@
 
                             updateStatus('Криптографические ключи получены');
                             console.log('✅ Криптография инициализирована');
+
+                            // Отправляем статус подключения
+                            displayMessage({
+                                text: 'Подключено к серверу шифрования. Ключи ГОСТ получены.',
+                                sender: 'system',
+                                timestamp: Date.now(),
+                                signatureValid: true,
+                                algorithm: 'GOST-R-34.10-2012'
+                            });
                         }
 
                     } else if (data.type === 'encrypted_message') {
-                        if (cryptoInitialized) {
-                            processEncryptedMessage(data);
-                        }
+                        console.log('📦 Получено зашифрованное сообщение от:', data.sender);
+                        processEncryptedMessage(data);
+
+                    } else if (data.type === 'pong') {
+                        console.log('❤️ Heartbeat получен');
+
+                    } else if (data.type === 'error') {
+                        console.error('❌ Ошибка от сервера:', data.error);
+                        updateStatus(`Ошибка сервера: ${data.error}`);
+
+                        displayMessage({
+                            text: `Ошибка сервера: ${data.error}`,
+                            sender: 'server',
+                            timestamp: data.timestamp || Date.now(),
+                            signatureValid: false,
+                            algorithm: 'error'
+                        });
                     }
 
                 } catch (error) {
-                    console.error('Ошибка обработки сообщения:', error);
+                    console.error('❌ Ошибка обработки сообщения:', error);
+                    console.log('Полученные данные:', event.data);
+
+                    // Показываем сырое сообщение при ошибке парсинга
+                    displayMessage({
+                        text: `Сырые данные: ${event.data.substring(0, 100)}...`,
+                        sender: 'system',
+                        timestamp: Date.now(),
+                        signatureValid: false,
+                        algorithm: 'raw'
+                    });
                 }
             };
 
@@ -198,36 +232,87 @@
 
         function processEncryptedMessage(data) {
             try {
+                console.log('📨 Получено зашифрованное сообщение:', data);
+
+                if (!cryptoInitialized) {
+                    console.warn('Криптография не инициализирована');
+                    updateStatus('❌ Криптография не инициализирована');
+                    return;
+                }
+
+                if (!data.payload) {
+                    console.warn('Нет payload в сообщении');
+                    updateStatus('❌ Нет данных в сообщении');
+                    return;
+                }
+
+                // Расшифровываем сообщение
                 const decrypted = window.CryptoManager.decryptMessage(data.payload);
-                const messageObj = JSON.parse(decrypted);
+                console.log('✅ Расшифрованное сообщение:', decrypted);
+
+                // Создаем объект сообщения для отображения
+                const messageObj = {
+                    text: decrypted.text || 'Пустое сообщение',
+                    sender: decrypted.sender || data.sender || 'unknown',
+                    timestamp: decrypted.timestamp || data.timestamp || Date.now(),
+                    signatureValid: decrypted.signatureValid || false,
+                    algorithm: decrypted.algorithm || 'GOST-R-34.10-2012',
+                    // Добавляем информацию о подписи для отображения
+                    signatureInfo: decrypted.signature ?
+                        `Подпись: ${decrypted.signature.signature?.substring?.(0, 20) || decrypted.signature.substring?.(0, 20) || 'нет'}...` :
+                        'Нет подписи'
+                };
 
                 // Отображаем сообщение
                 displayMessage(messageObj);
 
             } catch (error) {
-                console.error('Ошибка обработки сообщения:', error);
-                updateStatus(`❌ Ошибка расшифровки: ${error.message}`);
+                console.error('❌ Ошибка обработки сообщения:', error);
+                updateStatus(`❌ Ошибка обработки: ${error.message}`);
+
+                // Показываем сырое сообщение при ошибке
+                displayMessage({
+                    text: `Ошибка обработки: ${error.message}`,
+                    sender: 'system',
+                    timestamp: Date.now(),
+                    signatureValid: false,
+                    algorithm: 'error'
+                });
             }
         }
 
+        // Обновляем функцию displayMessage для отображения информации о подписи
         function displayMessage(messageObj) {
             const messagesContainer = document.getElementById('messagesContainer');
+
+            // Определяем статус подписи
+            let signatureStatus = '❓ Не проверена';
+            let signatureClass = '';
+
+            if (messageObj.signatureValid === true) {
+                signatureStatus = '✓ Проверена (ГОСТ)';
+                signatureClass = 'signature-valid';
+            } else if (messageObj.signatureValid === false) {
+                signatureStatus = '✗ Недействительна';
+                signatureClass = 'signature-invalid';
+            }
 
             const messageCard = document.createElement('div');
             messageCard.className = 'message-card';
             messageCard.innerHTML = `
-            <div class="message-header">
-                <span class="sender">👤 ${messageObj.sender}</span>
-                <span class="timestamp">${new Date(messageObj.timestamp).toLocaleTimeString()}</span>
-            </div>
-            <div class="message-text">${escapeHtml(messageObj.text)}</div>
-            <div class="crypto-info">
-                🔐 <strong>Шифрование ГОСТ:</strong> 
-                Алгоритм: ГОСТ Р 34.13-2015 "Кузнечик"<br>
-                Подпись: <span class="signature-valid">✓ Проверена</span>
-            </div>
-        `;
+        <div class="message-header">
+            <span class="sender">👤 ${escapeHtml(messageObj.sender)}</span>
+            <span class="timestamp">${new Date(messageObj.timestamp).toLocaleTimeString()}</span>
+        </div>
+        <div class="message-text">${escapeHtml(messageObj.text)}</div>
+        <div class="crypto-info">
+            🔐 <strong>Шифрование ${escapeHtml(messageObj.algorithm)}:</strong><br>
+            Подпись: <span class="${signatureClass}">${signatureStatus}</span>
+            ${messageObj.signatureInfo ? `<br>ℹ️ ${escapeHtml(messageObj.signatureInfo)}` : ''}
+        </div>
+    `;
 
+            // Очищаем placeholder если есть
             if (messagesContainer.firstChild &&
                 messagesContainer.firstChild.style &&
                 messagesContainer.firstChild.style.textAlign === 'center') {
@@ -236,19 +321,21 @@
 
             messagesContainer.insertBefore(messageCard, messagesContainer.firstChild);
 
-            // Ограничиваем количество
+            // Ограничиваем количество сообщений
             if (messagesContainer.children.length > 10) {
                 messagesContainer.removeChild(messagesContainer.lastChild);
             }
 
+            console.log('📄 Сообщение отображено:', messageObj);
         }
-
+        
+        // Обновляем функцию escapeHtml
         function escapeHtml(text) {
+            if (text === null || text === undefined) return '';
             const div = document.createElement('div');
-            div.textContent = text;
+            div.textContent = text.toString();
             return div.innerHTML;
         }
-
 
         function updateStatus(text) {
             const messagesContainer = document.getElementById('messagesContainer');

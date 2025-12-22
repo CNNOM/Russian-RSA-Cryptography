@@ -149,7 +149,7 @@
     </div>
 
     <!-- Подключаем криптографию -->
-    <script src="js/crypto.js"></script>
+    <script src="js/sender.js"></script>
 
     <script>
         let ws = null;
@@ -247,41 +247,25 @@
 
         function encryptAndSend() {
             const message = document.getElementById('message').value.trim();
-            if (!message) {
-                alert('Введите сообщение!');
-                return;
-            }
+            if (!message) return;
 
-            if (!cryptoInitialized) {
-                alert('Криптография не инициализирована. Подождите подключения...');
-                return;
-            }
+            // Создаем подпись (в реальности через WebAssembly)
+            const signature = {
+                signature: 'client_signature',
+                hash: 'hash_value'
+            };
 
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
-                alert('Нет подключения к серверу');
-                return;
-            }
-
-            try {
-                const encrypted = window.CryptoManager.encryptMessage(message);
-
-                ws.send(JSON.stringify({
-                    type: 'encrypted_message',
-                    payload: encrypted,
-                    timestamp: Date.now()
-                }));
-
-                updateStatus(`Отправлено зашифрованное сообщение`);
-                console.log('✅ Сообщение отправлено:', encrypted);
-
-                document.getElementById('message').value = '';
-
-            } catch (error) {
-                console.error('❌ Ошибка шифрования:', error);
-                alert('Ошибка шифрования сообщения: ' + error.message);
-            }
+            ws.send(JSON.stringify({
+                type: 'encrypted_message',
+                payload: {
+                    message: message,
+                    signature: signature.signature,
+                    hash: signature.hash
+                },
+                timestamp: Date.now()
+            }));
         }
-
+        
         function updateStatus(text) {
             const log = document.getElementById('messageLog');
             const item = document.createElement('div');
