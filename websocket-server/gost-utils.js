@@ -35,7 +35,7 @@ const GOSTUtils = {
             
             const keyPair = await gostCrypto.subtle.generateKey(
                 algorithm,
-                true, // extractable
+                true, 
                 ['sign', 'verify']
             );
             

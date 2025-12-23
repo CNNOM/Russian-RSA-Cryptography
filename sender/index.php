@@ -17,7 +17,7 @@
                     <div>Статус подключения:</div>
                     <div id="status" class="status-disconnected">Не подключено</div>
                 </div>
-                <div id="myInfo" class="key-display">Информация о пользователе появится после подключения...</div>
+                <!-- <div id="myInfo" class="key-display">Информация о пользователе появится после подключения...</div> -->
             </div>
 
             <div class="online-panel">
@@ -34,7 +34,7 @@
                 </select> -->
                 <textarea id="message" placeholder="Введите ваше сообщение здесь..."></textarea>
                 <div class="button-group">
-                    <button class="btn-primary" onclick="sendMessage()">📤 Отправить открыто</button>
+                    <button class="btn-primary" onclick="sendMessage()">📤 Отправить</button>
                 </div>
             </div>
         </div>

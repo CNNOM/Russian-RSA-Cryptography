@@ -10,7 +10,7 @@
     <div class="app-container">
         <div class="container receiver">
             <div class="header">
-                <h1>📥 Получатель (Демо ГОСТ)</h1>
+                <h1>📥 Получатель</h1>
                 <div class="status-bar">
                     <div style="display: flex; gap: 20px; flex-wrap: wrap;">
                         <div>
@@ -134,7 +134,7 @@
 
                 addMessage(`✅ Успешное подключение к серверу`, 'system');
                 addMessage(`👤 Ваш ID: ${data.clientId}`, 'system');
-                addMessage(`⚙️ Режим работы: ${mode}`, 'system');
+                // addMessage(`⚙️ Режим работы: ${mode}`, 'system');
 
                 // Обновляем статистику, если есть
                 if (data.online) {
@@ -161,26 +161,26 @@
 
         function updateOnlineUsers(users) {
             const panel = document.querySelector('.panel');
-            if (panel) {
-                let usersHtml = '<h3>👥 Онлайн пользователи</h3>';
-                if (users.length > 0) {
-                    usersHtml += '<div class="user-list">';
-                    users.forEach(user => {
-                        const isYou = user.id === myId;
-                        usersHtml += `
-                    <div class="user-badge ${isYou ? 'you' : ''}">
-                        <span>👤</span>
-                        ${user.name || user.id} 
-                        ${isYou ? '(Вы)' : ''}
-                    </div>
-                `;
-                    });
-                    usersHtml += '</div>';
-                } else {
-                    usersHtml += '<p style="color: #666; padding: 10px;">Нет других пользователей онлайн</p>';
-                }
-                panel.innerHTML = usersHtml;
-            }
+            // if (panel) {
+            //     let usersHtml = '<h3>👥 Онлайн пользователи</h3>';
+            //     if (users.length > 0) {
+            //         usersHtml += '<div class="user-list">';
+            //         users.forEach(user => {
+            //             const isYou = user.id === myId;
+            //             usersHtml += `
+            //         <div class="user-badge ${isYou ? 'you' : ''}">
+            //             <span>👤</span>
+            //             ${user.name || user.id} 
+            //             ${isYou ? '(Вы)' : ''}
+            //         </div>
+            //     `;
+            //         });
+            //         usersHtml += '</div>';
+            //     } else {
+            //         usersHtml += '<p style="color: #666; padding: 10px;">Нет других пользователей онлайн</p>';
+            //     }
+            //     panel.innerHTML = usersHtml;
+            // }
         }
 
         function handleEncryptedMessage(data) {
