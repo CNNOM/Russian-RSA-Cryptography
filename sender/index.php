@@ -4,71 +4,362 @@
 <head>
     <title>Отправитель GOST</title>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
             padding: 20px;
+            color: #333;
         }
 
-        .panel {
-            border: 1px solid #ccc;
+        .app-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
+            height: calc(100vh - 40px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            border-left: 6px solid;
+        }
+
+        .sender .header {
+            border-left-color: #4CAF50;
+        }
+
+        .receiver .header {
+            border-left-color: #2196F3;
+        }
+
+        h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-bar {
+            background: #f8f9fa;
             padding: 15px;
-            margin: 10px 0;
+            border-radius: 10px;
+            margin: 20px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
         }
 
-        input,
-        textarea,
+        .status-connected {
+            color: #4CAF50;
+            font-weight: bold;
+            padding: 5px 15px;
+            background: #e8f5e9;
+            border-radius: 20px;
+        }
+
+        .status-disconnected {
+            color: #f44336;
+            font-weight: bold;
+            padding: 5px 15px;
+            background: #ffebee;
+            border-radius: 20px;
+        }
+
+        /* Панель онлайн пользователей */
+        .online-panel {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .user-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .user-badge {
+            background: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Сообщения */
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            background: #f9f9f9;
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .message-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+            transition: transform 0.2s;
+        }
+
+        .message-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .sender {
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .sender-you {
+            color: #4CAF50;
+        }
+
+        .sender-other {
+            color: #2196F3;
+        }
+
+        .timestamp {
+            color: #666;
+            font-size: 12px;
+            background: #f5f5f5;
+            padding: 3px 8px;
+            border-radius: 10px;
+        }
+
+        .message-text {
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 10px;
+            margin: 15px 0;
+            font-size: 16px;
+            line-height: 1.5;
+        }
+
+        .message-encrypted {
+            border-left: 5px solid #ff9800;
+            background: #fff3e0;
+        }
+
+        .message-system {
+            border-left: 5px solid #9c27b0;
+            background: #f3e5f5;
+        }
+
+        /* Кнопки */
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
         button {
-            margin: 5px;
-            padding: 8px;
+            padding: 15px 30px;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 10px;
+            font-weight: bold;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 200px;
+            justify-content: center;
         }
 
+        .btn-primary {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(76, 175, 80, 0.3);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(33, 150, 243, 0.3);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            color: white;
+        }
+
+        /* Форма ввода */
         textarea {
             width: 100%;
-            height: 80px;
+            min-height: 120px;
+            padding: 20px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 12px;
+            resize: vertical;
+            font-family: inherit;
+            margin: 15px 0;
+            transition: border-color 0.3s;
         }
 
-        #output {
-            background: #f5f5f5;
-            padding: 10px;
-            white-space: pre-wrap;
+        textarea:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+
+        select {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            margin: 10px 0;
+            background: white;
+        }
+
+        /* Ключи */
+        .key-display {
+            background: #e8f5e9;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            font-size: 13px;
+            overflow-x: auto;
+            font-family: monospace;
+            word-break: break-all;
+        }
+
+        /* Анимации */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message-card {
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        /* Скроллбар */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        /* Адаптивность */
+        @media (max-width: 1200px) {
+            .app-container {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .container {
+                height: auto;
+                min-height: 700px;
+            }
         }
     </style>
 </head>
 
 <body>
-    <h1>🔐 Отправитель (WebCrypto GOST)</h1>
+    <div class="app-container">
+        <div class="container sender">
+            <div class="header">
+                <h1>🔐 Отправитель </h1>
+                <div class="status-bar">
+                    <div>Статус подключения:</div>
+                    <!-- <div id="status" class="status-disconnected">Не подключено</div> -->
+                </div>
+                <div id="myInfo" class="key-display">Информация о пользователе появится после подключения...</div>
+            </div>
 
-    <div class="panel">
-        <h3>Подключение</h3>
-        <div id="status">Подключение к WS...</div>
-        <div id="myInfo"></div>
-    </div>
+            <div class="online-panel">
+                <h3>👥 Онлайн пользователи</h3>
+                <div class="user-list" id="onlineList">
+                    <div class="user-badge">Загрузка...</div>
+                </div>
+            </div>
 
-    <div class="panel">
-        <h3>Онлайн пользователи</h3>
-        <div id="onlineList">Загрузка...</div>
-    </div>
-
-    <div class="panel">
-        <h3>Отправить сообщение</h3>
-        <select id="receiver"></select>
-        <br>
-        <textarea id="message" placeholder="Введите сообщение..."></textarea>
-        <br>
-        <button onclick="sendMessage()">📤 Отправить открыто</button>
-        <button onclick="sendEncrypted()">🔐 Зашифровать и отправить</button>
-    </div>
-
-    <div class="panel">
-        <h3>Журнал</h3>
-        <div id="log"></div>
-    </div>
-
-    <div class="panel">
-        <h3>Отладка</h3>
-        <button onclick="testGOST()">🧪 Тест ГОСТ функций</button>
-        <button onclick="getMyKey()">🔑 Показать мой публичный ключ</button>
-        <div id="output"></div>
+            <div class="panel">
+                <h3>📨 Отправить сообщение</h3>
+                <!-- <select id="receiver">
+                    <option value="">Выберите получателя</option>
+                </select> -->
+                <textarea id="message" placeholder="Введите ваше сообщение здесь..."></textarea>
+                <div class="button-group">
+                    <button class="btn-primary" onclick="sendMessage()">📤 Отправить открыто</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -76,6 +367,7 @@
         let myId = null;
         let myPublicKey = null;
         let onlineUsers = [];
+        let isConnected = false;
 
         connectWebSocket();
 
@@ -172,30 +464,9 @@
                 content: message
             }));
 
-            log(`📤 Вы: ${message}`);
             messageInput.value = '';
         }
 
-        function sendEncrypted() {
-            const messageInput = document.getElementById('message');
-            const message = messageInput.value;
-            const receiverSelect = document.getElementById('receiver');
-            const receiverId = receiverSelect.value;
-
-            if (!message.trim() || !receiverId) {
-                alert('Выберите получателя и введите сообщение');
-                return;
-            }
-
-            ws.send(JSON.stringify({
-                type: 'encrypt_message',
-                to: receiverId,
-                text: message
-            }));
-
-            log(`🔐 Вы шифруете для ${receiverSelect.options[receiverSelect.selectedIndex].text}`);
-            messageInput.value = '';
-        }
         function showEncryptedMessage(data) {
             const output = document.getElementById('output');
             output.innerHTML = `
@@ -216,18 +487,6 @@
                 from: fromId,
                 encryptedData: encryptedData
             }));
-        }
-
-        function testGOST() {
-            ws.send(JSON.stringify({
-                type: 'command',
-                command: 'test_gost'
-            }));
-        }
-
-        function getMyKey() {
-            const output = document.getElementById('output');
-            output.innerHTML = `<small>${myPublicKey}</small>`;
         }
 
         function log(text) {

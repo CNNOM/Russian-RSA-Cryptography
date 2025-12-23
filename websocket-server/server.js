@@ -1,305 +1,296 @@
+// server.js - Исправленная версия
 const WebSocket = require('ws');
-const GOSTCrypto = require('./gost-utils');
+
+// Для gost-crypto нам нужен другой подход
+let gost;
+try {
+    // Пытаемся использовать gost-crypto напрямую
+    const gostCrypto = require('gost-crypto');
+    console.log('✅ gost-crypto загружен, subtle доступен:', !!gostCrypto.subtle);
+    gost = gostCrypto;
+} catch (error) {
+    console.log('❌ gost-crypto не загружен:', error.message);
+    gost = null;
+}
 
 const wss = new WebSocket.Server({ port: 8082 });
-const gost = new GOSTCrypto();
 
-console.log('=== Russian GOST Crypto WebSocket Server ===');
-console.log('Используется демо-режим ГОСТ криптографии');
-
-// Запускаем тест асинхронно
-gost.test().then(result => {
-    console.log('Результат теста ГОСТ:', result.message);
-    if (result.note) console.log('Примечание:', result.note);
-}).catch(err => {
-    console.log('Тест ГОСТ пропущен:', err.message);
-});
+console.log('=== WebSocket Сервер с поддержкой ГОСТ ===');
+console.log('Режим:', gost ? 'gost-crypto доступен' : 'только маршрутизация');
+console.log('Порт: 8082');
 
 const clients = new Map();
+
+// Функция для генерации клиентских инструкций по ГОСТ
+function getGOSTInstructions() {
+    return {
+        forBrowser: `
+            // Добавьте в HTML:
+            <script src="https://unpkg.com/gost-crypto/dist/gostCrypto.min.js"></script>
+            
+            // Использование в браузере:
+            async function generateGOSTKeys() {
+                // Убедитесь, что gostCrypto доступен
+                if (window.gostCrypto) {
+                    const subtle = window.gostCrypto.subtle;
+                    const keyPair = await subtle.generateKey(
+                        {
+                            name: "GOST R 34.10-2012",
+                            namedCurve: "S-256-A"
+                        },
+                        true,
+                        ["sign", "verify"]
+                    );
+                    return keyPair;
+                }
+                return null;
+            }
+        `,
+        serverNote: "Сервер только пересылает зашифрованные данные",
+        clientNote: "Шифруйте данные в браузере с помощью gost-crypto"
+    };
+}
 
 wss.on('connection', (ws, req) => {
     const clientId = generateId();
     const ip = req.socket.remoteAddress;
-
-    console.log(`\n📡 Новое подключение: ${clientId} (${ip})`);
-
-    // Генерируем ключи асинхронно
-    gost.generateKeyPair().then(keys => {
-        // Сохраняем клиента
-        clients.set(clientId, {
-            ws: ws,
-            publicKey: keys.publicKey,
-            privateKey: keys.privateKey,
-            name: `User_${clientId.slice(0, 4)}`,
-            ip: ip,
-            connectedAt: new Date().toISOString(),
-            isTestKey: keys.isTest || false
-        });
-
-        console.log(`✅ Ключи для ${clientId}: ${keys.isTest ? 'тестовые' : 'реальные'}`);
-
-        // Отправляем приветствие
-        ws.send(JSON.stringify({
-            type: 'system',
-            event: 'connected',
-            clientId: clientId,
-            publicKey: keys.publicKey,
-            timestamp: Date.now(),
-            message: 'Добро пожаловать в демо систему ГОСТ-шифрования',
-            mode: keys.isTest ? 'demo' : 'real'
-        }));
-
-        // Уведомляем других
-        broadcastSystemMessage(`👤 ${clients.get(clientId).name} подключился`, clientId);
-
-        // Отправляем список онлайн
-        sendOnlineListToAll();
-
-    }).catch(error => {
-        console.error(`❌ Ошибка генерации ключей для ${clientId}:`, error);
-
-        // Создаем клиента без ключей
-        clients.set(clientId, {
-            ws: ws,
-            publicKey: null,
-            privateKey: null,
-            name: `User_${clientId.slice(0, 4)}`,
-            ip: ip,
-            connectedAt: new Date().toISOString(),
-            isTestKey: true
-        });
-
-        ws.send(JSON.stringify({
-            type: 'system',
-            event: 'connected',
-            clientId: clientId,
-            timestamp: Date.now(),
-            message: 'Подключено (режим без шифрования)',
-            mode: 'no-crypto'
-        }));
+    
+    console.log(`\n📡 Новый клиент: ${clientId} (${ip})`);
+    
+    // Создаем клиента
+    clients.set(clientId, {
+        ws: ws,
+        id: clientId,
+        name: `User_${clientId.slice(0, 4)}`,
+        ip: ip,
+        connectedAt: new Date().toISOString(),
+        publicKey: null, // Будет установлен клиентом
+        hasGost: false
     });
-
-    // Обработчик сообщений
-    // В обработчике сообщений в server.js исправьте:
+    
+    const client = clients.get(clientId);
+    
+    // Отправляем приветствие
+    ws.send(JSON.stringify({
+        type: 'system',
+        event: 'connected',
+        clientId: clientId,
+        timestamp: Date.now(),
+        message: 'Добро пожаловать!',
+        gostAvailable: !!gost,
+        instructions: gost ? getGOSTInstructions() : null,
+        yourName: client.name
+    }));
+    
+    // Уведомляем всех
+    broadcast({
+        type: 'user_joined',
+        clientId: clientId,
+        name: client.name,
+        timestamp: Date.now()
+    }, clientId);
+    
+    // Обновляем список онлайн
+    updateOnlineList();
+    
     ws.on('message', async (message) => {
         try {
             const text = message.toString();
-            const client = clients.get(clientId);
-
-            console.log(`✉️  RAW от ${client.name}:`, text);
-
+            console.log(`📨 ${client.name}:`, text.substring(0, 100));
+            
             let data;
             try {
                 data = JSON.parse(text);
-                console.log(`   Парсинг: тип=${data.type}, длина=${JSON.stringify(data).length}`);
-            } catch (parseError) {
-                console.log(`   Не JSON, отправляем как текст: ${text.substring(0, 50)}`);
+            } catch {
                 data = { type: 'text', content: text };
             }
-
-            // Обработка сообщений
-            if (data.type === 'text' && data.content) {
-                // Обычное текстовое сообщение
-                const messageObj = {
-                    type: 'message',
-                    from: clientId,
-                    fromName: client.name,
-                    text: data.content,
-                    timestamp: Date.now(),
-                    encrypted: false
-                };
-
-                console.log(`   📨 Отправляем всем: ${data.content.substring(0, 30)}...`);
-
-                // Отправляем всем, кроме отправителя
-                clients.forEach((recipient, id) => {
-                    if (id !== clientId && recipient.ws.readyState === WebSocket.OPEN) {
-                        recipient.ws.send(JSON.stringify(messageObj));
+            
+            // Обработка разных типов сообщений
+            switch(data.type) {
+                case 'set_name':
+                    if (data.name && data.name.trim()) {
+                        const oldName = client.name;
+                        client.name = data.name.trim();
+                        console.log(`🔄 ${clientId}: ${oldName} → ${client.name}`);
+                        
+                        broadcast({
+                            type: 'name_changed',
+                            clientId: clientId,
+                            oldName: oldName,
+                            newName: client.name,
+                            timestamp: Date.now()
+                        });
                     }
-                });
-
-            } else if (data.type === 'encrypt_message') {
-                await handleEncryptMessage(clientId, data, client);
-
-            } else if (data.type === 'set_name') {
-                if (data.name && data.name.trim()) {
-                    const oldName = client.name;
-                    client.name = data.name.trim();
-                    console.log(`🔄 ${clientId}: ${oldName} → ${client.name}`);
-
-                    broadcastSystemMessage(`${oldName} сменил имя на ${client.name}`);
-                    sendOnlineListToAll();
-                }
-
-            } else if (data.type === 'command') {
-                await handleCommand(clientId, data, client);
-
-            } else {
-                // Любое другое сообщение пересылаем как есть
-                console.log(`   🔄 Пересылаем сырое сообщение`);
-                clients.forEach((recipient, id) => {
-                    if (id !== clientId && recipient.ws.readyState === WebSocket.OPEN) {
-                        recipient.ws.send(text);
+                    break;
+                    
+                case 'set_public_key':
+                    // Клиент отправляет свой публичный ключ
+                    if (data.publicKey) {
+                        client.publicKey = data.publicKey;
+                        client.hasGost = data.hasGost || false;
+                        console.log(`🔑 ${client.name} установил публичный ключ`);
                     }
-                });
+                    break;
+                    
+                case 'encrypted_message':
+                    // Зашифрованное сообщение
+                    await handleEncryptedMessage(clientId, data);
+                    break;
+                    
+                case 'get_online':
+                    // Запрос списка онлайн
+                    sendOnlineList(clientId);
+                    break;
+                    
+                case 'get_public_key':
+                    // Запрос публичного ключа другого клиента
+                    if (data.targetId) {
+                        const target = clients.get(data.targetId);
+                        if (target && target.publicKey) {
+                            ws.send(JSON.stringify({
+                                type: 'public_key',
+                                targetId: data.targetId,
+                                targetName: target.name,
+                                publicKey: target.publicKey,
+                                hasGost: target.hasGost
+                            }));
+                        }
+                    }
+                    break;
+                    
+                case 'command':
+                    // Команды
+                    await handleCommand(clientId, data);
+                    break;
+                    
+                default:
+                    // Обычное текстовое сообщение
+                    if (data.content || data.text) {
+                        broadcast({
+                            type: 'message',
+                            from: clientId,
+                            fromName: client.name,
+                            text: data.content || data.text,
+                            timestamp: Date.now(),
+                            encrypted: false
+                        }, clientId);
+                    }
             }
-
+            
         } catch (error) {
             console.error(`❌ Ошибка у ${clientId}:`, error);
             ws.send(JSON.stringify({
                 type: 'error',
-                message: 'Ошибка обработки: ' + error.message
+                message: error.message
             }));
         }
     });
-
+    
     ws.on('close', () => {
-        const client = clients.get(clientId);
-        if (client) {
-            console.log(`🔌 Отключение: ${client.name}`);
-            broadcastSystemMessage(`👋 ${client.name} вышел`);
-            clients.delete(clientId);
-            sendOnlineListToAll();
-        }
+        console.log(`🔌 Отключение: ${client.name} (${clientId})`);
+        
+        broadcast({
+            type: 'user_left',
+            clientId: clientId,
+            name: client.name,
+            timestamp: Date.now()
+        });
+        
+        clients.delete(clientId);
+        updateOnlineList();
     });
-
+    
     ws.on('error', (error) => {
-        console.error(`⚠️  Ошибка WS у ${clientId}:`, error);
+        console.error(`⚠️ WebSocket ошибка у ${clientId}:`, error);
     });
 });
 
-// Обработчики команд
-async function handleEncryptMessage(senderId, data, sender) {
-    if (!sender.publicKey || !sender.privateKey) {
-        sender.ws.send(JSON.stringify({
-            type: 'error',
-            message: 'У вас нет ключей для шифрования'
-        }));
-        return;
-    }
-
-    const receiver = clients.get(data.to);
-    if (!receiver) {
-        sender.ws.send(JSON.stringify({
-            type: 'error',
-            message: 'Получатель не найден'
-        }));
-        return;
-    }
-
-    if (!receiver.publicKey) {
-        sender.ws.send(JSON.stringify({
-            type: 'error',
-            message: 'У получателя нет публичного ключа'
-        }));
-        return;
-    }
-
-    try {
-        console.log(`🔐 ${sender.name} шифрует для ${receiver.name}`);
-
-        const encrypted = await gost.encryptForReceiver(
-            data.text,
-            sender.privateKey,
-            receiver.publicKey
-        );
-
-        // Отправляем отправителю подтверждение
-        sender.ws.send(JSON.stringify({
-            type: 'encryption_done',
-            to: data.to,
-            toName: receiver.name,
-            originalLength: data.text.length,
-            encryptedLength: encrypted.encrypted.data.length,
-            isFallback: encrypted.isFallback || false,
-            timestamp: Date.now()
-        }));
-
-        // Отправляем получателю
-        receiver.ws.send(JSON.stringify({
-            type: 'encrypted_message',
+// Обработка зашифрованных сообщений
+async function handleEncryptedMessage(senderId, data) {
+    const sender = clients.get(senderId);
+    if (!sender) return;
+    
+    console.log(`🔐 ${sender.name} отправил зашифрованное сообщение`);
+    
+    // Если указан получатель
+    if (data.to && data.to !== 'all') {
+        const recipient = clients.get(data.to);
+        if (recipient && recipient.ws.readyState === WebSocket.OPEN) {
+            // Пересылаем зашифрованные данные получателю
+            recipient.ws.send(JSON.stringify({
+                type: 'encrypted_message',
+                from: senderId,
+                fromName: sender.name,
+                data: data.data,
+                signature: data.signature,
+                algorithm: data.algorithm,
+                timestamp: Date.now(),
+                note: 'Используйте gost-crypto в браузере для расшифровки'
+            }));
+            
+            // Подтверждение отправителю
+            sender.ws.send(JSON.stringify({
+                type: 'encryption_sent',
+                to: data.to,
+                toName: recipient.name,
+                timestamp: Date.now()
+            }));
+        }
+    } else {
+        // Шифрованное сообщение всем (для демо)
+        broadcast({
+            type: 'encrypted_broadcast',
             from: senderId,
             fromName: sender.name,
-            encrypted: encrypted,
-            timestamp: Date.now(),
-            instructions: 'Используйте команду decrypt для расшифровки'
-        }));
-
-    } catch (error) {
-        console.error('Ошибка шифрования:', error);
-        sender.ws.send(JSON.stringify({
-            type: 'error',
-            message: 'Ошибка шифрования: ' + error.message
-        }));
+            hasEncryptedData: true,
+            algorithm: data.algorithm,
+            timestamp: Date.now()
+        }, senderId);
     }
 }
 
-async function handleCommand(clientId, data, client) {
-    switch (data.command) {
-        case 'decrypt':
-            if (data.encryptedData) {
-                try {
-                    const sender = clients.get(data.from);
-                    if (!sender) throw new Error('Отправитель не найден');
-
-                    const result = await gost.decryptAndVerify(
-                        data.encryptedData,
-                        sender.publicKey,
-                        client.privateKey
-                    );
-
-                    client.ws.send(JSON.stringify({
-                        type: 'decryption_result',
-                        from: data.from,
-                        fromName: sender.name,
-                        message: result.decrypted,
-                        signatureValid: result.isValid,
-                        isFallback: result.isFallback || false,
-                        timestamp: Date.now()
-                    }));
-
-                } catch (error) {
-                    client.ws.send(JSON.stringify({
-                        type: 'error',
-                        message: 'Ошибка расшифровки: ' + error.message
-                    }));
-                }
-            }
-            break;
-
+// Обработка команд
+async function handleCommand(clientId, data) {
+    const client = clients.get(clientId);
+    if (!client) return;
+    
+    switch(data.command) {
         case 'test_gost':
-            const testResult = await gost.test();
+            // Тестирование доступности ГОСТ
+            const testResult = {
+                serverHasGost: !!gost,
+                clientHasGost: client.hasGost,
+                message: gost ? 
+                    'gost-crypto доступен (subtle API)' : 
+                    'gost-crypto не доступен на сервере',
+                recommendation: 'Используйте gost-crypto в браузере'
+            };
+            
             client.ws.send(JSON.stringify({
                 type: 'test_result',
-                success: testResult.success,
-                message: testResult.message,
-                isDemo: testResult.isDemo || false,
-                details: testResult.features
+                ...testResult,
+                timestamp: Date.now()
             }));
             break;
-
-        case 'generate_keys':
-            try {
-                const keys = await gost.generateKeyPair();
-                client.publicKey = keys.publicKey;
-                client.privateKey = keys.privateKey;
-                client.isTestKey = keys.isTest || false;
-
-                client.ws.send(JSON.stringify({
-                    type: 'keys_generated',
-                    publicKey: keys.publicKey,
-                    isTest: keys.isTest || false,
-                    timestamp: Date.now()
-                }));
-
-                sendOnlineListToAll();
-
-            } catch (error) {
-                client.ws.send(JSON.stringify({
-                    type: 'error',
-                    message: 'Ошибка генерации ключей: ' + error.message
-                }));
-            }
+            
+        case 'generate_demo_keys':
+            // Генерация демо-ключей
+            const demoKeys = {
+                publicKey: JSON.stringify({
+                    kty: "EC-GOST-DEMO",
+                    id: `demo_${Date.now()}`,
+                    crv: "S-256-A",
+                    note: "Это демо-ключ. В реальности используйте gost-crypto в браузере"
+                }),
+                algorithm: "GOST-R-34.10-2012 (демо)",
+                created: new Date().toISOString()
+            };
+            
+            client.ws.send(JSON.stringify({
+                type: 'demo_keys',
+                keys: demoKeys,
+                timestamp: Date.now()
+            }));
             break;
     }
 }
@@ -309,76 +300,68 @@ function generateId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 }
 
-function broadcastMessage(senderId, text) {
-    const sender = clients.get(senderId);
-    if (!sender) return;
-
-    const message = {
-        type: 'message',
-        from: senderId,
-        fromName: sender.name,
-        text: text,
-        timestamp: Date.now()
-    };
-
-    clients.forEach((client, id) => {
-        if (id !== senderId && client.ws.readyState === WebSocket.OPEN) {
-            client.ws.send(JSON.stringify(message));
-        }
-    });
-}
-
-function broadcastSystemMessage(text, excludeId = null) {
-    const message = {
-        type: 'system',
-        message: text,
-        timestamp: Date.now()
-    };
-
+function broadcast(message, excludeId = null) {
+    const json = JSON.stringify(message);
+    
     clients.forEach((client, id) => {
         if (id !== excludeId && client.ws.readyState === WebSocket.OPEN) {
-            client.ws.send(JSON.stringify(message));
+            client.ws.send(json);
         }
     });
 }
 
-function sendOnlineListToAll() {
+function updateOnlineList() {
     const onlineList = Array.from(clients.entries()).map(([id, client]) => ({
         id: id,
         name: client.name,
         hasPublicKey: !!client.publicKey,
-        isTestKey: client.isTestKey || false
+        hasGost: client.hasGost
     }));
-
-    const message = {
+    
+    broadcast({
         type: 'online_list',
         users: onlineList,
         count: clients.size,
         timestamp: Date.now()
-    };
-
-    clients.forEach(client => {
-        if (client.ws.readyState === WebSocket.OPEN) {
-            client.ws.send(JSON.stringify(message));
-        }
     });
 }
 
-console.log('\n✅ Сервер запущен на порту 8082');
-console.log('✅ Sender:   http://localhost:8080');
-console.log('✅ Receiver: http://localhost:8081');
-console.log('✅ WebSocket: ws://localhost:8082');
-console.log('\n=== Демо система ГОСТ готова к работе ===\n');
+function sendOnlineList(clientId) {
+    const client = clients.get(clientId);
+    if (!client) return;
+    
+    const onlineList = Array.from(clients.entries()).map(([id, c]) => ({
+        id: id,
+        name: c.name,
+        hasPublicKey: !!c.publicKey,
+        hasGost: c.hasGost
+    }));
+    
+    client.ws.send(JSON.stringify({
+        type: 'online_list',
+        users: onlineList,
+        count: clients.size,
+        timestamp: Date.now()
+    }));
+}
 
-// Статистика
-setInterval(() => {
-    console.log(`📊 Статистика: ${clients.size} клиентов онлайн`);
-}, 30000);
+// Информация о системе
+console.log('\n📋 Инструкции для клиентов:');
+console.log('1. В браузере подключите gost-crypto:');
+console.log('   <script src="https://unpkg.com/gost-crypto/dist/gostCrypto.min.js"></script>');
+console.log('2. Генерируйте ключи в браузере');
+console.log('3. Шифруйте сообщения в браузере');
+console.log('4. Сервер только пересылает зашифрованные данные\n');
 
 // Graceful shutdown
 process.on('SIGINT', () => {
     console.log('\n🔻 Остановка сервера...');
-    broadcastSystemMessage('Сервер останавливается...');
+    broadcast({
+        type: 'system',
+        message: 'Сервер останавливается',
+        timestamp: Date.now()
+    });
+    
     wss.close(() => {
         console.log('✅ Сервер остановлен');
         process.exit(0);
